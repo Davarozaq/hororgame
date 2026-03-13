@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Sahur Mencekam 3D Mobile</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Memuat Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Memuat PointerLockControls untuk FPS -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/PointerLockControls.js"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Creepster&family=Nosifer&family=Roboto:wght@400;700&display=swap');
+
+        body {
+            margin: 0;
+            background-color: #000;
+            color: #e0e0e0;
+            font-family: 'Roboto', sans-serif;
+            overflow: hidden;
+            user-select: none;
+            touch-action: none;
+        }
+
+        .title-font {
+            font-family: 'Creepster', cursive;
+        }
+
+        /* Animations */
+        @keyframes flicker {
+            0%, 19%, 21%, 23%, 25%, 54%, 56%, 100% { opacity: 1; }
+            20%, 22%, 24%, 55% { opacity: 0.2; }
+        }
+
+        .flicker-text {
+            animation: flicker 4s infinite;
+        }
+
+        @keyframes shake {
+            0% { transform: translate(1px, 1px) rotate(0deg); }
+            10% { transform: translate(-1px, -2px) rotate(-1deg); }
+            20% { transform: translate(-3px, 0px) rotate(1deg); }
+            30% { transform: translate(3px, 2px) rotate(0deg); }
+            40% { transform: translate(1px, -1px) rotate(1deg); }
+            50% { transform: translate(-1px, 2px) rotate(-1deg); }
+            60% { transform: translate(-3px, 1px) rotate(0deg); }
+            70% { transform: translate(3px, 1px) rotate(-1deg); }
+            80% { transform: translate(-1px, -1px) rotate(1deg); }
+            90% { transform: translate(1px, 2px) rotate(0deg); }
+            100% { transform: translate(1px, -2px) rotate(-1deg); }
+        }
+
+        .shake-intense {
+            animation: shake 0.1s infinite;
+        }
+
+        @keyframes flashRed {
+            0% { background-color: black; }
+            50% { background-color: #aa0000; }
+            100% { background-color: black; }
+        }
+
+        .flash-bg {
+            animation: flashRed 0.1s infinite;
+        }
+
+        /* Joystick Styles */
+        #joystick-container {
+            position: absolute;
+            bottom: 40px;
+            left: 40px;
+            width: 120px;
+            height: 120px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            z-index: 30;
+            display: none;
+            touch-action: none;
+        }
+
+        #joystick-knob {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 50px;
+            height: 50px;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            touch-action: none;
+        }
+
+        /* Action Button */
+        #action-button {
+            position: absolute;
+            bottom: 40px;
+            right: 40px;
+            width: 80px;
+            height: 80px;
+            background: rgba(220, 38, 38, 0.4);
+            border: 2px solid rgba(220, 38, 38, 0.6);
+            border-radius: 50%;
+            z-index: 30;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            text-shadow: 1px 1px 2px black;
+            box-shadow: 0 0 15px rgba(220, 38, 38, 0.3);
+            touch-action: none;
+        }
+
+        #action-button:active {
+            transform: scale(0.9);
+            background: rgba(220, 38, 38, 0.8);
+        }
+
+        /* Crosshair */
+        #crosshair {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 6px;
+            height: 6px;
+            background-color: rgba(255, 255, 255, 0.8);
+            transform: translate(-50%, -50%);
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 20;
+            border: 1px solid black;
+        }
+    </style>
+</head>
+<body class="w-screen h-screen relative">
+
+    <!-- 3D Canvas Container -->
+    <div id="canvas-container" class="absolute inset-0 z-0"></div>
+
+    <!-- Mobile Controls -->
+    <div id="joystick-container">
+        <div id="joystick-knob"></div>
+    </div>
+    <div id="action-button">Gunakan</div>
+
+    <!-- UI Overlay selama gameplay -->
+    <div id="ui-layer" class="absolute inset-0 pointer-events-none z-10 hidden flex-col items-center justify-between p-4 md:p-8">
+        <div id="crosshair"></div>
+        
+        <div class="mt-4 md:mt-10 z-20 text-center w-full px-4">
+            <p id="story-text" class="text-lg md:text-2xl font-serif italic text-gray-300 transition-opacity duration-500 shadow-black drop-shadow-lg bg-black bg-opacity-50 px-4 py-2 rounded">Dapur terasa sangat dingin malam ini...</p>
+        </div>
+
+        <div class="w-full max-w-md flex flex-col items-center mb-24 md:mb-10">
+            <!-- Progress Bar -->
+            <div id="progress-bar-container" class="w-full h-4 bg-gray-800 rounded-full mb-4 hidden border border-gray-700 relative overflow-hidden pointer-events-auto">
+                <div id="progress-bar" class="h-full bg-orange-600 w-0 transition-all duration-100 ease-linear"></div>
+            </div>
+            
+            <p id="instruction-text" class="text-xs md:text-sm text-gray-400 z-20 animate-pulse bg-black bg-opacity-50 px-4 py-2 rounded drop-shadow-md text-center">
+                Mendekatlah ke panci lalu tekan tombol "Gunakan".
+            </p>
+        </div>
+    </div>
+
+    <!-- SCREEN 1: WARNING & START -->
+    <div id="screen-start" class="absolute inset-0 flex flex-col items-center justify-center z-40 bg-black p-6 text-center">
+        <h3 class="text-gray-500 mb-2 font-mono text-sm">Dibuat oleh Dava Rozaq Aprilliawan</h3>
+        <h1 class="text-5xl md:text-8xl text-red-600 title-font mb-4 flicker-text">SAHUR MENCEKAM</h1>
+        <p class="text-base md:text-xl max-w-lg mb-6 text-gray-400">Jam menunjukkan pukul 03:15 AM. Perutmu keroncongan. Waktunya pergi ke dapur untuk memasak mie instan.</p>
+        
+        <div class="border border-red-800 bg-red-900 bg-opacity-20 p-4 rounded mb-6 max-w-md">
+            <h2 class="text-red-500 font-bold text-lg mb-1">⚠️ PERINGATAN (3D Mobile) ⚠️</h2>
+            <p class="text-xs text-gray-300">Gunakan Joystick untuk berjalan dan usap layar untuk melihat. Game ini mengandung suara keras dan JUMPSCARE.</p>
+        </div>
+
+        <button id="btn-start" class="px-8 py-4 bg-red-800 hover:bg-red-700 text-white font-bold rounded-lg text-xl transition-colors ring-4 ring-red-900 ring-opacity-50 shadow-[0_0_20px_rgba(220,38,38,0.5)] active:scale-95">
+            MULAI PERMAINAN
+        </button>
+    </div>
+
+    <!-- SCREEN: JUMPSCARE -->
+    <div id="screen-jumpscare" class="absolute inset-0 z-50 hidden flex items-center justify-center flash-bg shake-intense">
+        <svg class="w-full h-full object-cover" viewBox="0 0 100 100" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+            <rect width="100" height="100" fill="transparent"/>
+            <path d="M 10 50 C 10 0, 90 0, 90 50 C 90 100, 70 110, 50 110 C 30 110, 10 100, 10 50 Z" fill="#d1d5db" filter="drop-shadow(0 0 20px red)"/>
+            <path d="M 20 40 Q 35 30 45 45 Q 35 55 20 40 Z" fill="#000"/><path d="M 80 40 Q 65 30 55 45 Q 65 55 80 40 Z" fill="#000"/>
+            <circle cx="35" cy="42" r="2" fill="#ff0000" filter="drop-shadow(0 0 5px red)"/><circle cx="65" cy="42" r="2" fill="#ff0000" filter="drop-shadow(0 0 5px red)"/>
+            <path d="M 15 75 C 30 60, 70 60, 85 75 C 80 110, 20 110, 15 75 Z" fill="#000"/>
+        </svg>
+    </div>
+
+    <script>
+        // --- AUDIO ENGINE ---
+        let audioCtx;
+        let ambientOsc, ambientGain, boilOsc, boilGain;
+
+        function initAudio() {
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            audioCtx = new AudioContext();
+        }
+
+        function playAmbient() {
+            ambientOsc = audioCtx.createOscillator();
+            ambientGain = audioCtx.createGain();
+            ambientOsc.type = 'sine';
+            ambientOsc.frequency.value = 45;
+            ambientGain.gain.value = 0.5;
+            ambientOsc.connect(ambientGain);
+            ambientGain.connect(audioCtx.destination);
+            ambientOsc.start();
+        }
+
+        function stopAmbient() {
+            if (ambientGain) {
+                ambientGain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 1);
+                setTimeout(() => ambientOsc.stop(), 1000);
+            }
+        }
+
+        function playBoilingSound() {
+            const bufferSize = audioCtx.sampleRate * 2; 
+            const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+            boilOsc = audioCtx.createBufferSource();
+            boilOsc.buffer = buffer;
+            boilOsc.loop = true;
+            const filter = audioCtx.createBiquadFilter();
+            filter.type = 'lowpass';
+            filter.frequency.value = 400;
+            boilGain = audioCtx.createGain();
+            boilGain.gain.value = 0;
+            boilOsc.connect(filter); filter.connect(boilGain); boilGain.connect(audioCtx.destination);
+            boilOsc.start();
+            boilGain.gain.linearRampToValueAtTime(0.8, audioCtx.currentTime + 2);
+        }
+
+        function stopBoilingSound() {
+            if (boilGain) {
+                boilGain.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+                setTimeout(() => { if(boilOsc) boilOsc.stop(); }, 500);
+            }
+        }
+
+        function playRustlingSound() {
+            const bufferSize = audioCtx.sampleRate * 0.5;
+            const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1) * 0.1;
+            const source = audioCtx.createBufferSource();
+            source.buffer = buffer;
+            const filter = audioCtx.createBiquadFilter(); filter.type = 'bandpass'; filter.frequency.setValueAtTime(2000, audioCtx.currentTime);
+            const gain = audioCtx.createGain(); gain.gain.setValueAtTime(1.5, audioCtx.currentTime);
+            source.connect(filter); filter.connect(gain); gain.connect(audioCtx.destination);
+            source.start();
+        }
+
+        function playExtremeJumpscareSound() {
+            const masterGain = audioCtx.createGain();
+            masterGain.connect(audioCtx.destination);
+            masterGain.gain.setValueAtTime(5.0, audioCtx.currentTime);
+            const osc1 = audioCtx.createOscillator(); osc1.type = 'sawtooth'; osc1.frequency.setValueAtTime(3000, audioCtx.currentTime); osc1.connect(masterGain);
+            const osc2 = audioCtx.createOscillator(); osc2.type = 'square'; osc2.frequency.setValueAtTime(1243, audioCtx.currentTime); osc2.connect(masterGain);
+            osc1.start(); osc2.start();
+            setTimeout(() => { osc1.stop(); osc2.stop(); }, 3000);
+        }
+
+        // --- THREE.JS ENGINE ---
+        let camera, scene, renderer, controls;
+        let raycaster, stoveLight, flashlight, potMesh, roomLight;
+        let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
+        let prevTime = performance.now();
+        const velocity = new THREE.Vector3(), direction = new THREE.Vector3();
+        let gameState = 0, cookingProgress = 0, cookingInterval;
+
+        // Mobile Controls Logic
+        let isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        let joystickActive = false, joystickStartPos = { x: 0, y: 0 };
+        let touchLookActive = false, lastTouchPos = { x: 0, y: 0 };
+        const eJoystick = document.getElementById('joystick-container');
+        const eKnob = document.getElementById('joystick-knob');
+        const eAction = document.getElementById('action-button');
+
+        function init3D() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x020202);
+            scene.fog = new THREE.Fog(0x020202, 0, 15);
+
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
+            camera.position.y = 1.6; camera.position.z = 5;
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+            controls = new THREE.PointerLockControls(camera, document.body);
+            scene.add(controls.getObject());
+
+            // Listeners
+            document.addEventListener('keydown', (e) => handleKey(e.code, true));
+            document.addEventListener('keyup', (e) => handleKey(e.code, false));
+            raycaster = new THREE.Raycaster();
+            
+            if(!isMobile) {
+                document.addEventListener('mousedown', onMouseClick);
+            } else {
+                initMobileControls();
+            }
+
+            buildEnvironment();
+
+            flashlight = new THREE.SpotLight(0xffffff, 1.5, 12, Math.PI / 6, 0.5, 1);
+            flashlight.castShadow = true;
+            camera.add(flashlight);
+            flashlight.position.set(0.2, -0.2, 0);
+            flashlight.target.position.set(0, -0.2, -1);
+            camera.add(flashlight.target);
+
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        function handleKey(code, isPressed) {
+            switch (code) {
+                case 'KeyW': moveForward = isPressed; break;
+                case 'KeyA': moveLeft = isPressed; break;
+                case 'KeyS': moveBackward = isPressed; break;
+                case 'KeyD': moveRight = isPressed; break;
+            }
+        }
+
+        function initMobileControls() {
+            eJoystick.style.display = 'block';
+            eAction.style.display = 'flex';
+
+            // Joystick Movement
+            eJoystick.addEventListener('touchstart', (e) => {
+                joystickActive = true;
+                const touch = e.touches[0];
+                const rect = eJoystick.getBoundingClientRect();
+                joystickStartPos = { x: rect.left + rect.width/2, y: rect.top + rect.height/2 };
+            });
+
+            window.addEventListener('touchmove', (e) => {
+                if (joystickActive) {
+                    const touch = Array.from(e.touches).find(t => t.clientX < window.innerWidth / 2);
+                    if(touch) {
+                        const dx = touch.clientX - joystickStartPos.x;
+                        const dy = touch.clientY - joystickStartPos.y;
+                        const dist = Math.min(Math.sqrt(dx*dx + dy*dy), 40);
+                        const angle = Math.atan2(dy, dx);
+                        
+                        const mx = Math.cos(angle) * dist;
+                        const my = Math.sin(angle) * dist;
+                        eKnob.style.transform = `translate(calc(-50% + ${mx}px), calc(-50% + ${my}px))`;
+
+                        // Movement direction
+                        moveForward = my < -15;
+                        moveBackward = my > 15;
+                        moveLeft = mx < -15;
+                        moveRight = mx > 15;
+                    }
+                }
+
+                // Look Logic (Right side of screen)
+                if(touchLookActive) {
+                    const touch = Array.from(e.touches).find(t => t.clientX > window.innerWidth / 2);
+                    if(touch) {
+                        const movementX = touch.clientX - lastTouchPos.x;
+                        const movementY = touch.clientY - lastTouchPos.y;
+                        
+                        const rotation = new THREE.Euler(0, 0, 0, 'YXZ');
+                        rotation.setFromQuaternion(camera.quaternion);
+                        rotation.y -= movementX * 0.005;
+                        rotation.x -= movementY * 0.005;
+                        rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, rotation.x));
+                        camera.quaternion.setFromEuler(rotation);
+                        
+                        lastTouchPos = { x: touch.clientX, y: touch.clientY };
+                    }
+                }
+            });
+
+            window.addEventListener('touchend', (e) => {
+                if(e.touches.length === 0) {
+                    joystickActive = false;
+                    touchLookActive = false;
+                    moveForward = moveBackward = moveLeft = moveRight = false;
+                    eKnob.style.transform = `translate(-50%, -50%)`;
+                }
+            });
+
+            // Handle Camera Rotation Start
+            window.addEventListener('touchstart', (e) => {
+                const touch = e.touches[e.touches.length - 1];
+                if(touch.clientX > window.innerWidth / 2) {
+                    touchLookActive = true;
+                    lastTouchPos = { x: touch.clientX, y: touch.clientY };
+                }
+            });
+
+            eAction.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                onMouseClick();
+            });
+        }
+
+        function buildEnvironment() {
+            scene.add(new THREE.AmbientLight(0x050505));
+            roomLight = new THREE.PointLight(0x333322, 0.3, 10);
+            roomLight.position.set(0, 3, 0); scene.add(roomLight);
+
+            const floor = new THREE.Mesh(new THREE.PlaneGeometry(20, 20), new THREE.MeshStandardMaterial({ color: 0x050505 }));
+            floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
+
+            const room = new THREE.Mesh(new THREE.BoxGeometry(10, 5, 10), new THREE.MeshStandardMaterial({ color: 0x111111, side: THREE.BackSide }));
+            room.position.y = 2.5; room.receiveShadow = true; scene.add(room);
+
+            const counter = new THREE.Mesh(new THREE.BoxGeometry(4, 1, 2), new THREE.MeshStandardMaterial({ color: 0x222222 }));
+            counter.position.set(0, 0.5, -4); counter.castShadow = true; scene.add(counter);
+
+            potMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.5, 32), new THREE.MeshStandardMaterial({ color: 0x555566, metalness: 0.6 }));
+            potMesh.position.set(0, 1.25, -4); potMesh.name = "pot"; potMesh.castShadow = true; scene.add(potMesh);
+
+            stoveLight = new THREE.PointLight(0xff4400, 0, 3); stoveLight.position.set(0, 1.0, -4); scene.add(stoveLight);
+
+            // Bushes
+            for(let i=0; i<5; i++) {
+                const bush = new THREE.Mesh(new THREE.SphereGeometry(0.8, 8, 8), new THREE.MeshStandardMaterial({ color: 0x0a1a0a }));
+                bush.position.set(-4 + Math.random()*2, 0.4, 4 - Math.random()*2); scene.add(bush);
+            }
+        }
+
+        function onMouseClick() {
+            if (gameState === 0 || gameState === 5) return;
+            
+            raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+            const intersects = raycaster.intersectObjects(scene.children);
+            let clickedPot = intersects.some(i => i.object.name === "pot");
+            const distance = camera.position.distanceTo(potMesh.position);
+
+            if (clickedPot && distance < 3) handlePotInteraction();
+            else if (clickedPot) changeText(document.getElementById('instruction-text'), "Terlalu jauh.");
+        }
+
+        function handlePotInteraction() {
+            const storyText = document.getElementById('story-text');
+            const instructionText = document.getElementById('instruction-text');
+            const progressBar = document.getElementById('progress-bar');
+            const progressBarContainer = document.getElementById('progress-bar-container');
+
+            if (gameState === 1) {
+                gameState = 2; stoveLight.intensity = 2;
+                progressBarContainer.classList.remove('hidden');
+                changeText(storyText, "Air mulai panas...");
+                playBoilingSound();
+
+                cookingInterval = setInterval(() => {
+                    cookingProgress += 1;
+                    progressBar.style.width = `${cookingProgress}%`;
+                    if (cookingProgress === 50) {
+                        playRustlingSound(); roomLight.intensity = 0.05;
+                        setTimeout(() => { roomLight.intensity = 0.3; }, 500);
+                        changeText(storyText, "Sreek... Ada suara di semak?");
+                    }
+                    if (cookingProgress >= 100) {
+                        clearInterval(cookingInterval); gameState = 4;
+                        changeText(storyText, "Sudah mendidih!");
+                        changeText(instructionText, "Tekan 'Gunakan' untuk mematikan.");
+                    }
+                }, 100); 
+            } else if (gameState === 4) {
+                gameState = 5; stopAmbient(); stopBoilingSound();
+                stoveLight.intensity = 0; roomLight.intensity = 0; flashlight.intensity = 0;
+                eJoystick.style.display = 'none'; eAction.style.display = 'none';
+                setTimeout(triggerJumpscare, 1000);
+            }
+        }
+
+        function triggerJumpscare() {
+            document.getElementById('canvas-container').classList.add('hidden');
+            document.getElementById('ui-layer').classList.add('hidden');
+            document.getElementById('screen-jumpscare').classList.remove('hidden');
+            playExtremeJumpscareSound();
+            setTimeout(() => { window.location.reload(); }, 4000);
+        }
+
+        function changeText(el, txt) {
+            el.style.opacity = 0;
+            setTimeout(() => { el.innerText = txt; el.style.opacity = 1; }, 500);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        document.getElementById('btn-start').addEventListener('click', () => {
+            initAudio();
+            if(!isMobile) controls.lock();
+            else {
+                document.getElementById('screen-start').classList.add('hidden');
+                document.getElementById('ui-layer').classList.remove('hidden');
+                document.getElementById('ui-layer').classList.add('flex');
+                gameState = 1; playAmbient();
+            }
+        });
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const time = performance.now();
+            const delta = (time - prevTime) / 1000;
+
+            if (isMobile || controls.isLocked) {
+                velocity.x -= velocity.x * 10.0 * delta; velocity.z -= velocity.z * 10.0 * delta;
+                direction.z = Number(moveForward) - Number(moveBackward);
+                direction.x = Number(moveRight) - Number(moveLeft);
+                direction.normalize();
+
+                if (moveForward || moveBackward) velocity.z -= direction.z * 20.0 * delta;
+                if (moveLeft || moveRight) velocity.x -= direction.x * 20.0 * delta;
+
+                const camDir = new THREE.Vector3(); camera.getWorldDirection(camDir);
+                const camSide = new THREE.Vector3().crossVectors(camera.up, camDir).normalize();
+                
+                // Manual movement for mobile
+                if(isMobile) {
+                    camera.position.addScaledVector(new THREE.Vector3(camDir.x, 0, camDir.z).normalize(), -velocity.z * delta);
+                    camera.position.addScaledVector(camSide, velocity.x * delta);
+                } else {
+                    controls.moveRight(-velocity.x * delta);
+                    controls.moveForward(-velocity.z * delta);
+                }
+
+                // Bounds
+                camera.position.x = Math.max(-4.5, Math.min(4.5, camera.position.x));
+                camera.position.z = Math.max(-2.5, Math.min(4.5, camera.position.z));
+
+                if (gameState === 4 && potMesh) potMesh.position.x = (Math.random() - 0.5) * 0.05;
+                if (gameState === 2 && stoveLight) stoveLight.intensity = 1.5 + Math.random() * 0.5;
+                if (flashlight) flashlight.intensity = 1.4 + Math.random() * 0.2;
+            }
+            prevTime = time;
+            renderer.render(scene, camera);
+        }
+
+        window.onload = () => { init3D(); animate(); };
+    </script>
+</body>
+</html>
